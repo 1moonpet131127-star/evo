@@ -1,0 +1,1282 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 전력 관리 대시보드 - Agent_AI_EVO</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 3D 및 차트 라이브러리 추가 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Courier New', Courier, monospace; background-color: #051005; color: #0f0; margin: 0; padding: 0; }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #001100; }
+        ::-webkit-scrollbar-thumb { background: #00ff00; }
+        .view-active { display: flex !important; }
+        .view-hidden { display: none !important; }
+        canvas { outline: none; }
+        
+        /* 3D 화면 추적 HTML 층수 버튼 스타일 */
+        .floor-tag-btn {
+            position: absolute;
+            transform: translate(-50%, -50%);
+            background: rgba(5, 16, 5, 0.85);
+            border: 2px solid #22c55e;
+            color: #22c55e;
+            font-weight: bold;
+            font-size: 13px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            user-select: none;
+            pointer-events: auto; /* 마우스 클릭 활성화 추가! */
+            transition: background 0.2s, color 0.2s, transform 0.1s;
+            box-shadow: 0 0 10px rgba(34, 197, 94, 0.4);
+            z-index: 15;
+        }
+        .floor-tag-btn:hover {
+            background: #22c55e;
+            color: #000;
+            box-shadow: 0 0 15px rgba(34, 197, 94, 0.8);
+        }
+        
+        /* 교실 3D 라벨 스타일 */
+        .room-3d-label {
+            position: absolute;
+            transform: translate(-50%, -100%);
+            color: #86efac;
+            font-weight: bold;
+            font-size: 11px;
+            background: rgba(0, 0, 0, 0.75);
+            border: 1px solid #166534;
+            padding: 2px 6px;
+            border-radius: 4px;
+            pointer-events: none;
+            white-space: nowrap;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col p-4 overflow-hidden">
+    <header class="mb-2 border-b-2 border-green-600 pb-2 flex justify-between items-end flex-shrink-0">
+        <div>
+            <h1 class="text-3xl font-bold text-green-500">System: Agent_AI_EVO [Middle School Energy Grid]</h1>
+            <div class="text-sm mt-1">Real-time Power Monitoring & Optimization System Active.</div>
+        </div>
+        <!-- 최상단 메인 뷰 전환 탭 -->
+        <div class="flex gap-2">
+            <button id="nav-panel-btn" class="bg-green-600 text-black px-4 py-2 font-bold rounded transition hover:bg-green-500" onclick="switchMainView('panel')">대시보드 컨트롤 패널</button>
+            <button id="nav-3d-btn" class="border border-green-600 text-green-500 px-4 py-2 font-bold rounded transition hover:bg-green-900" onclick="switchMainView('3d')">3D 시각화 & 전력 통계</button>
+        </div>
+    </header>
+
+    <div class="flex-grow flex gap-4 overflow-hidden flex-col md:flex-row min-h-0">
+        
+        <!-- ==================== LEFT PANE (VIEWS) ==================== -->
+        <div class="w-full md:w-3/4 flex flex-col overflow-hidden relative border border-green-800 rounded bg-black bg-opacity-50">
+            
+            <!-- VIEW 1: 대시보드 컨트롤 패널 -->
+            <div id="view-panel" class="view-active flex-col h-full p-4 overflow-hidden">
+                <div class="flex gap-2 mb-4 flex-shrink-0">
+                    <button class="tab-btn bg-green-600 text-black px-4 py-1 rounded font-bold transition" onclick="changeTab('ALL')">ALL</button>
+                    <button class="tab-btn border border-green-600 text-green-500 px-4 py-1 rounded hover:bg-green-900 transition" onclick="changeTab('4F')">4F (1학년)</button>
+                    <button class="tab-btn border border-green-600 text-green-500 px-4 py-1 rounded hover:bg-green-900 transition" onclick="changeTab('3F')">3F (2학년)</button>
+                    <button class="tab-btn border border-green-600 text-green-500 px-4 py-1 rounded hover:bg-green-900 transition" onclick="changeTab('2F')">2F (3학년)</button>
+                    <button class="tab-btn border border-green-600 text-green-500 px-4 py-1 rounded hover:bg-green-900 transition" onclick="changeTab('1F')">1F (행정)</button>
+                </div>
+                <!-- 층별 화면 컨테이너 -->
+                <div class="flex-grow overflow-y-auto pr-2" id="floor-container">
+                    <!-- 자바스크립트로 렌더링 됨 -->
+                </div>
+            </div>
+
+            <!-- VIEW 2: 3D 시각화 & 전력 통계 -->
+            <div id="view-3d" class="view-hidden flex-col h-full w-full">
+                <!-- 3D 영역 -->
+                <div class="relative w-full flex-grow border-b border-green-800" id="three-container">
+                    <!-- 3D 컨트롤 UI 오버레이 -->
+                    <div class="absolute top-4 left-4 z-10 bg-black bg-opacity-70 p-2 border border-green-600 rounded text-sm">
+                        <div id="3d-status" class="font-bold text-yellow-400 mb-2">> 학교 전체 보기</div>
+                        <button id="btn-3d-back" class="hidden bg-green-900 text-green-300 px-3 py-1 border border-green-600 hover:bg-green-700 w-full mb-1" onclick="goBack3D()">🔙 학교 전체 보기로 복귀</button>
+                        <div class="mt-1 text-xs text-gray-400">우측 층수 버튼 클릭: 층별 보기<br>층별 보기 시 교실 클릭: 전력 토글</div>
+                    </div>
+                    
+                    <!-- 층수 태그 컨테이너 오버레이 -->
+                    <div id="floor-tags-container" class="absolute inset-0 pointer-events-none z-10 overflow-hidden"></div>
+                    <!-- 교실 이름 라벨 컨테이너 -->
+                    <div id="room-labels-container" class="absolute inset-0 pointer-events-none z-10 overflow-hidden"></div>
+
+                    <div id="3d-tooltip" class="absolute hidden bg-black border border-green-500 text-green-400 px-2 py-1 text-xs pointer-events-none z-20"></div>
+                </div>
+                
+                <!-- 하단 그래프 영역 -->
+                <div class="h-48 w-full p-2 bg-[#0a1a0a] flex-shrink-0 relative">
+                    <h3 class="absolute top-2 left-4 text-sm font-bold text-green-500 z-10">Real-time Energy Grid Usage Trend</h3>
+                    <canvas id="usageChart"></canvas>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- ==================== RIGHT PANE (CONTROLS & LOGS) ==================== -->
+        <div class="w-full md:w-1/4 flex flex-col gap-4 overflow-hidden">
+            
+            <!-- Controls Box -->
+            <div class="border border-green-600 p-4 rounded bg-gray-900 bg-opacity-50 flex-shrink-0">
+                <h3 class="text-xl border-b border-green-600 pb-2 mb-2 flex justify-between items-end">
+                    <span>Controls</span>
+                    <div class="text-right flex flex-col">
+                        <span id="real-time-clock" class="text-xs text-green-300 font-mono">00:00:00</span>
+                        <span id="time-display" class="text-sm text-yellow-400 font-bold">대기중</span>
+                    </div>
+                </h3>
+                
+                <!-- 시간 제어 모드 버튼들 -->
+                <button onclick="toggleTimeMode()" id="mode-btn" class="w-full bg-green-600 text-black py-1.5 rounded font-bold text-sm mb-2 transition">실시간 동기화 ON (자동)</button>
+                <button onclick="openOverrideModal()" class="w-full bg-green-900 text-green-300 border border-green-700 py-1 rounded hover:bg-green-700 hover:text-white transition font-bold text-sm mb-2">> 시간표 수동 제어</button>
+                
+                <div id="manual-controls" class="flex gap-2 mb-2" style="display: none;">
+                    <button onclick="cycleDay()" class="flex-1 bg-black border border-green-600 text-green-500 py-1 rounded hover:bg-green-900 transition text-sm">요일변경</button>
+                    <button onclick="cyclePeriod()" class="flex-1 bg-black border border-green-600 text-green-500 py-1 rounded hover:bg-green-900 transition text-sm">교시변경</button>
+                </div>
+                
+                <!-- EVO 질의 입력창 -->
+                <div class="mt-4 border-t border-green-800 pt-2">
+                    <div class="text-sm mb-1 text-green-400">Query Agent_AI_EVO:</div>
+                    <div class="flex gap-1">
+                        <input type="text" id="evo-input" class="flex-grow bg-black border border-green-600 rounded px-2 text-green-500 text-sm focus:outline-none" placeholder="명령어 입력..." onkeypress="if(event.key === 'Enter') askEVO()">
+                        <button onclick="askEVO()" class="bg-green-900 text-green-400 border border-green-600 px-3 py-1 rounded hover:bg-green-700 transition text-sm">전송</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Grid Stats Box -->
+            <div class="border border-green-600 p-4 rounded bg-gray-900 bg-opacity-50 flex-shrink-0">
+                <h3 class="text-xl border-b border-green-600 pb-2 mb-2">Grid Stats</h3>
+                <div class="flex justify-between mb-1"><span>Total Rooms:</span><span id="stat-total">0</span></div>
+                <div class="flex justify-between mb-1"><span>Active Grid:</span><span id="stat-active" class="text-green-400">0</span></div>
+                <div class="flex justify-between font-bold"><span>Energy Usage:</span><span id="stat-usage" class="text-yellow-400">0%</span></div>
+            </div>
+
+            <!-- Terminal Logs Box -->
+            <div class="border border-green-600 p-4 rounded bg-gray-900 bg-opacity-50 flex-1 flex flex-col min-h-0">
+                <h3 class="text-xl border-b border-green-600 pb-2 mb-2 flex-shrink-0">Terminal Logs</h3>
+                <div id="log-box" class="flex-1 overflow-y-auto text-xs text-green-300 space-y-1 pr-1 break-words"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 시간표 수동 오버라이드 모달 -->
+    <div id="ovr-modal" class="fixed inset-0 bg-black bg-opacity-80 hidden items-center justify-center z-50">
+        <div class="bg-[#051005] border-2 border-green-700 w-96 max-w-full shadow-[0_0_15px_rgba(0,255,0,0.3)] flex flex-col max-h-[90vh]">
+            <div class="flex justify-between items-center border-b border-green-700 p-3 bg-[#0a1a0a]">
+                <h3 class="font-bold text-green-500">> TARGET_CLASS_SELECT</h3>
+                <button onclick="closeOverrideModal()" class="text-red-500 font-bold hover:text-red-400">X</button>
+            </div>
+            <div class="p-4 overflow-y-auto flex-1 text-sm">
+                <div class="flex items-center gap-3 mb-2">
+                    <span class="text-green-500">FLOOR:</span>
+                    <select id="ovr-floor-select" class="bg-black text-green-400 border border-green-700 p-1 flex-1 font-bold outline-none" onchange="renderOverrideClasses()">
+                        <option value="">층 선택...</option>
+                        <option value="4">4F (1학년)</option>
+                        <option value="3">3F (2학년)</option>
+                        <option value="2">2F (3학년)</option>
+                    </select>
+                </div>
+                <div class="flex items-center gap-3 mb-4">
+                    <span class="text-green-500">CLASS:</span>
+                    <select id="ovr-class-select" class="bg-black text-green-400 border border-green-700 p-1 flex-1 font-bold outline-none" onchange="renderOverridePeriods()">
+                        <option value="">층을 먼저 선택하세요</option>
+                    </select>
+                </div>
+                <div id="ovr-periods-container" class="space-y-2"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 과목 선택 서브 모달 -->
+    <div id="subj-modal" class="fixed inset-0 bg-black bg-opacity-80 hidden items-center justify-center z-50">
+        <div class="bg-[#051005] border border-yellow-600 w-64 shadow-[0_0_15px_rgba(255,255,0,0.2)]">
+            <div class="border-b border-yellow-600 p-2 bg-[#1a1a00] text-yellow-500 font-bold text-center text-sm">
+                > SELECT SUBJECT
+            </div>
+            <div class="p-2 h-64 overflow-y-auto" id="subj-list-container"></div>
+            <div class="p-2 border-t border-yellow-600">
+                <button onclick="closeSubjModal()" class="w-full bg-red-900 text-red-300 py-1 hover:bg-red-700 border border-red-800">CANCEL</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 메인 뷰 전환 ---
+        function switchMainView(view) {
+            const panelBtn = document.getElementById('nav-panel-btn');
+            const d3Btn = document.getElementById('nav-3d-btn');
+            const viewPanel = document.getElementById('view-panel');
+            const view3D = document.getElementById('view-3d');
+
+            if (view === 'panel') {
+                panelBtn.className = "bg-green-600 text-black px-4 py-2 font-bold rounded transition hover:bg-green-500";
+                d3Btn.className = "border border-green-600 text-green-500 px-4 py-2 font-bold rounded transition hover:bg-green-900";
+                viewPanel.classList.remove('view-hidden');
+                viewPanel.classList.add('view-active');
+                view3D.classList.remove('view-active');
+                view3D.classList.add('view-hidden');
+            } else {
+                d3Btn.className = "bg-green-600 text-black px-4 py-2 font-bold rounded transition hover:bg-green-500";
+                panelBtn.className = "border border-green-600 text-green-500 px-4 py-2 font-bold rounded transition hover:bg-green-900";
+                view3D.classList.remove('view-hidden');
+                view3D.classList.add('view-active');
+                viewPanel.classList.remove('view-active');
+                viewPanel.classList.add('view-hidden');
+                
+                if (window.onWindowResize) window.onWindowResize();
+            }
+        }
+
+        // =========================================================================
+        // 수현중학교 교내 데이터 (수정 및 동기화 반영)
+        // =========================================================================
+        const schoolData = [
+            { floor: 4, rooms: [
+                { id: '1-1', subject: '국어', isMoving: false, power: true, x: 7, z: -4.5, w: 3, d: 2 },
+                { id: '1-2', subject: '수학', isMoving: false, power: true, x: 7, z: -1.5, w: 3, d: 2 },
+                { id: '1-3', subject: '영어', isMoving: false, power: true, x: 7, z: 1.5, w: 3, d: 2 },
+                { id: '1-4', subject: '과학', isMoving: false, power: true, x: 7, z: 4.5, w: 3, d: 2 },
+                { id: '1-5', subject: '사회', isMoving: false, power: true, x: 5, z: 7, w: 2.8, d: 2 },
+                { id: '1-6', subject: '체육', isMoving: true, power: false, x: 2, z: 7, w: 2.8, d: 2 },
+                { id: '학생 자치회', subject: '대기중', isMoving: false, power: false, x: -1, z: 7, w: 2.8, d: 2 },
+                { id: '과학실 1', subject: '대기중', isMoving: false, power: false, x: -3, z: -4.5, w: 3.5, d: 2 },
+                { id: '과학실 2', subject: '대기중', isMoving: false, power: false, x: -3, z: -7, w: 3.5, d: 2 },
+                { id: '피아노실', subject: '대기중', isMoving: false, power: false, x: -7, z: -7, w: 2.5, d: 2 },
+                { id: '1학년 교무실', subject: '상시운영', isMoving: false, power: true, x: -6, z: 2, w: 3.5, d: 2.5 }
+            ]},
+            { floor: 3, rooms: [
+                { id: '동아리실 1', subject: '대기중', isMoving: false, power: false, x: 7, z: 4.5, w: 3, d: 2 },
+                { id: '동아리실 2', subject: '대기중', isMoving: false, power: false, x: 7, z: 1.5, w: 3, d: 2 },
+                { id: '동아리실 3', subject: '대기중', isMoving: false, power: false, x: 7, z: -1.5, w: 3, d: 2 },
+                { id: '동아리실 4', subject: '대기중', isMoving: false, power: false, x: -2, z: -4.5, w: 2.8, d: 2 },
+                { id: '2-1', subject: '수학', isMoving: false, power: true, x: -5, z: 7, w: 2.4, d: 2 },
+                { id: '2-2', subject: '영어', isMoving: false, power: true, x: -2.3, z: 7, w: 2.4, d: 2 },
+                { id: '2-3', subject: '역사', isMoving: false, power: true, x: 0.4, z: 7, w: 2.4, d: 2 },
+                { id: '2-4', subject: '국어', isMoving: false, power: true, x: 3.1, z: 7, w: 2.4, d: 2 },
+                { id: '2-5', subject: '미술', isMoving: true, power: false, x: 5.8, z: 7, w: 2.4, d: 2 },
+                { id: '음악실', subject: '대기중', isMoving: false, power: false, x: -3, z: -7, w: 4, d: 2 },
+                { id: '미술실', subject: '대기중', isMoving: false, power: false, x: -6.5, z: -4.5, w: 3, d: 2 },
+                { id: '2학년 교무실', subject: '상시운영', isMoving: false, power: true, x: -6, z: 2, w: 3.5, d: 2.5 }
+            ]},
+            { floor: 2, rooms: [
+                { id: '다목적강당', subject: '상시운영', isMoving: false, power: true, x: 6.5, z: -5.5, w: 4, d: 4.5 },
+                { id: '3-6', subject: '도덕', isMoving: false, power: true, x: 7, z: 4.5, w: 3, d: 2 },
+                { id: '3-7', subject: '기가', isMoving: true, power: false, x: 7, z: 2, w: 3, d: 2 },
+                { id: '3-8', subject: '과학', isMoving: false, power: true, x: 7, z: -0.5, w: 3, d: 2 },
+                { id: '3-1', subject: '국어', isMoving: false, power: true, x: -5, z: 7, w: 2.4, d: 2 },
+                { id: '3-2', subject: '영어', isMoving: false, power: true, x: -2.3, z: 7, w: 2.4, d: 2 },
+                { id: '3-3', subject: '수학', isMoving: false, power: true, x: 0.4, z: 7, w: 2.4, d: 2 },
+                { id: '3-4', subject: '사회', isMoving: false, power: true, x: 3.1, z: 7, w: 2.4, d: 2 },
+                { id: '3-5', subject: '역사', isMoving: false, power: true, x: 5.8, z: 7, w: 2.4, d: 2 },
+                { id: '기술실', subject: '대기중', isMoving: false, power: false, x: -2, z: -7, w: 4, d: 2 },
+                { id: '가정실', subject: '대기중', isMoving: false, power: false, x: -6.5, z: -4.5, w: 3, d: 2 },
+                { id: '기가실', subject: '대기중', isMoving: false, power: false, x: 2, z: -7, w: 3, d: 2 },
+                { id: '본교무실', subject: '상시운영', isMoving: false, power: true, x: 0, z: 0, w: 4, d: 4 },
+                { id: '3학년 교무실', subject: '상시운영', isMoving: false, power: true, x: -6, z: 2, w: 3.5, d: 2.5 }
+            ]},
+            { floor: 1, rooms: [
+                { id: '급식실', subject: '배식운영', isMoving: false, power: false, x: 6.5, z: -4, w: 4, d: 4 },
+                { id: '안전인권부', subject: '상시운영', isMoving: false, power: true, x: 0, z: 0, w: 4, d: 4 },
+                { id: '컴퓨터실', subject: '대기중', isMoving: false, power: false, x: 7, z: 1.5, w: 3, d: 2 },
+                { id: '도서관', subject: '상시운영', isMoving: false, power: true, x: 7, z: 4.5, w: 3, d: 2.5 },
+                { id: '위클래스', subject: '상시운영', isMoving: false, power: true, x: -6, z: 7, w: 2.5, d: 2 },
+                { id: '보건실', subject: '상시운영', isMoving: false, power: true, x: -3, z: 7, w: 2.5, d: 2 },
+                { id: '행정실', subject: '상시운영', isMoving: false, power: true, x: 2, z: 7, w: 2.5, d: 2 },
+                { id: '교장실', subject: '상시운영', isMoving: false, power: true, x: 6, z: 7, w: 3, d: 2 }
+            ]}
+        ];
+
+        const adminRooms = ['1학년 교무실', '2학년 교무실', '3학년 교무실', '본교무실', '위클래스', '보건실', '도서관', '행정실', '교장실', '안전인권부', '다목적강당'];
+        const clubRooms = ['동아리실 1', '동아리실 2', '동아리실 3', '동아리실 4', '학생 자치회'];
+        const nonSubjectRooms = [...adminRooms, ...clubRooms, '급식실'];
+        const specialRoomMap = {
+            '과학': ['과학실 1', '과학실 2'],
+            '음악': ['음악실', '피아노실'],
+            '미술': ['미술실'],
+            '정보': ['컴퓨터실'],
+            '기가': ['기가실', '가정실', '기술실']
+        };
+
+        let currentTab = 'ALL';
+
+        function addLog(msg) {
+            const logBox = document.getElementById('log-box');
+            if(logBox) {
+                const time = new Date().toLocaleTimeString('ko-KR', { hour12: false });
+                logBox.innerHTML += `<div><span class="text-green-600">[${time}]</span> ${msg}</div>`;
+                logBox.scrollTop = logBox.scrollHeight;
+            }
+        }
+
+        function changeTab(tab) {
+            currentTab = tab;
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('bg-green-600', 'text-black');
+                btn.classList.add('border-green-600', 'text-green-500');
+                if(btn.innerText === tab || (tab !== 'ALL' && btn.innerText.includes(tab))) {
+                    btn.classList.add('bg-green-600', 'text-black');
+                    btn.classList.remove('border-green-600', 'text-green-500');
+                }
+            });
+            renderFloors();
+            addLog(`Switched view to ${tab}`);
+        }
+
+        function renderFloors() {
+            const container = document.getElementById('floor-container');
+            if(container) {
+                container.innerHTML = '';
+                
+                schoolData.forEach(floor => {
+                    if (currentTab !== 'ALL' && currentTab !== `${floor.floor}F`) return;
+
+                    const floorDiv = document.createElement('div');
+                    floorDiv.className = 'mb-6 border border-green-800 p-4 rounded bg-black bg-opacity-50';
+                    
+                    let html = `<h2 class="text-xl font-bold mb-3 border-b border-green-800 pb-2">${floor.floor}F Sector</h2>
+                                <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">`;
+
+                    floor.rooms.forEach(room => {
+                        const statusColor = room.power ? 'text-green-400' : 'text-gray-500';
+                        const borderColor = room.power ? 'border-green-500' : 'border-gray-700';
+                        const icon = room.power ? '⚡ ON' : '⏾ OFF';
+                        
+                        let displaySubject = room.subject;
+                        if (nonSubjectRooms.includes(room.id)) {
+                            displaySubject = room.power ? '사용중' : '사용 안함';
+                        } else if (!room.power && !nonSubjectRooms.includes(room.id)) {
+                            if (room.isMoving) displaySubject = '이동수업(공석)';
+                            else if (room.subject === '대기중') displaySubject = '대기중';
+                        }
+
+                        html += `
+                            <div class="border ${borderColor} p-3 rounded flex flex-col justify-between transition-all duration-300 cursor-pointer hover:bg-green-900 hover:bg-opacity-50 hover:border-white" onclick="toggleRoom(${floor.floor}, '${room.id}')" title="클릭하여 수동으로 전력 ON/OFF 전환">
+                                <div class="flex justify-between items-center mb-2">
+                                    <span class="font-bold text-lg">${room.id}</span>
+                                    <span class="text-xs ${statusColor} border ${borderColor} px-1 rounded">${icon}</span>
+                                </div>
+                                <div class="text-sm text-gray-400 truncate">${displaySubject}</div>
+                            </div>
+                        `;
+                    });
+                    
+                    html += `</div>`;
+                    floorDiv.innerHTML = html;
+                    container.appendChild(floorDiv);
+                });
+            }
+
+            // Stats Update
+            let totalRooms = 0;
+            let activeRooms = 0;
+            schoolData.forEach(floor => floor.rooms.forEach(room => {
+                totalRooms++;
+                if (room.power) activeRooms++;
+            }));
+
+            const totalEl = document.getElementById('stat-total');
+            const activeEl = document.getElementById('stat-active');
+            const usageEl = document.getElementById('stat-usage');
+            
+            if(totalEl) totalEl.innerText = totalRooms;
+            if(activeEl) activeEl.innerText = activeRooms;
+            if(usageEl) {
+                const usage = totalRooms === 0 ? 0 : Math.round((activeRooms / totalRooms) * 100);
+                usageEl.innerText = usage + '%';
+            }
+
+            if (typeof sync3DMaterials === 'function') sync3DMaterials();
+        }
+
+        function toggleRoom(floorLevel, roomId, from3D = false) {
+            const floor = schoolData.find(f => f.floor === floorLevel);
+            if (floor) {
+                const room = floor.rooms.find(r => r.id === roomId);
+                if (room) {
+                    room.power = !room.power;
+                    const actionStr = room.power ? '⚡ 강제 공급(ON)' : '⏾ 강제 차단(OFF)';
+                    const src = from3D ? '[3D 시각화]' : '[수동개입]';
+                    addLog(`<span class="text-yellow-400 font-bold">⚠️ ${src} 사용자가 ${floorLevel}층 ${roomId}의 전력을 ${actionStr} 했습니다.</span>`);
+                    renderFloors();
+                }
+            }
+        }
+
+        // --- 시간표 및 시간 관리 로직 ---
+        const days = ['월', '화', '수', '목', '금'];
+        let currentDayIdx = 0;
+        let currentPeriod = 1;
+        
+        let autoMode = true;
+        let lastAutoPeriodStr = '';
+        let manualOverrides = {};
+
+        let simulatedDate = new Date(); 
+        const DEMO_SPEED_FACTOR = 15; 
+
+        function toggleTimeMode() {
+            autoMode = !autoMode;
+            const btn = document.getElementById('mode-btn');
+            const manualControls = document.getElementById('manual-controls');
+            if(autoMode) {
+                btn.innerText = "실시간 동기화 ON (자동)";
+                btn.className = "w-full bg-green-600 text-black py-1.5 rounded font-bold text-sm mb-2 transition";
+                manualControls.style.display = "none";
+                addLog("System: 실시간 시간표 자동 동기화 활성화");
+            } else {
+                btn.innerText = "수동 시간 제어 모드";
+                btn.className = "w-full border border-green-600 text-green-400 py-1.5 rounded hover:bg-green-900 transition text-sm mb-2";
+                manualControls.style.display = "flex";
+                addLog("System: 시스템 자동화 중지. 수동 제어 모드 진입 (시계는 계속 작동합니다).");
+            }
+        }
+
+        function checkRealTime() {
+            simulatedDate = new Date(simulatedDate.getTime() + (100 * DEMO_SPEED_FACTOR));
+            const now = simulatedDate;
+            const clockEl = document.getElementById('real-time-clock');
+            if(clockEl) clockEl.innerText = now.toLocaleTimeString('ko-KR', { hour12: false });
+
+            if(!autoMode) return;
+
+            const dayOfWeek = now.getDay();
+            const timeVal = now.getHours() * 100 + now.getMinutes();
+
+            let newDayIdx = dayOfWeek === 0 || dayOfWeek === 6 ? 0 : dayOfWeek - 1; 
+            let newPeriod = null;
+
+            if (dayOfWeek === 0 || dayOfWeek === 6) {
+                newPeriod = '주말';
+            } else {
+                if (timeVal < 900) newPeriod = '등교전';
+                else if (timeVal >= 900 && timeVal < 945) newPeriod = 1;
+                else if (timeVal >= 945 && timeVal < 955) newPeriod = '쉬는시간';
+                else if (timeVal >= 955 && timeVal < 1040) newPeriod = 2;
+                else if (timeVal >= 1040 && timeVal < 1050) newPeriod = '쉬는시간';
+                else if (timeVal >= 1050 && timeVal < 1135) newPeriod = 3;
+                else if (timeVal >= 1135 && timeVal < 1145) newPeriod = '쉬는시간';
+                else if (timeVal >= 1145 && timeVal < 1230) newPeriod = 4;
+                else if (timeVal >= 1230 && timeVal < 1330) newPeriod = '점심';
+                else if (timeVal >= 1330 && timeVal < 1415) newPeriod = 5;
+                else if (timeVal >= 1415 && timeVal < 1425) newPeriod = '쉬는시간';
+                else if (timeVal >= 1425 && timeVal < 1510) newPeriod = 6;
+                else if (timeVal >= 1510 && timeVal < 1520) newPeriod = '쉬는시간';
+                else if (timeVal >= 1520 && timeVal < 1605 && (newDayIdx === 1 || newDayIdx === 3)) newPeriod = 7;
+                else newPeriod = '방과후';
+            }
+
+            const periodStr = `${newDayIdx}-${newPeriod}`;
+            if (lastAutoPeriodStr !== periodStr) {
+                lastAutoPeriodStr = periodStr;
+                currentDayIdx = newDayIdx;
+                currentPeriod = newPeriod;
+                
+                const periodLabel = currentPeriod === '점심' ? '점심시간' : (typeof currentPeriod === 'number' ? currentPeriod + '교시' : currentPeriod);
+                addLog(`<span class="text-blue-300 font-bold">🕒 [시간표 자동 전환] 시간이 경과하여 ${days[currentDayIdx]}요일 ${periodLabel} (으)로 변경되었습니다. 전력망을 재조정합니다.</span>`);
+                
+                updateTimeDisplay();
+                applyTimetable();
+            }
+        }
+
+        function updateTimeDisplay() {
+            const display = document.getElementById('time-display');
+            if(display) {
+                if (['등교전', '방과후', '주말', '쉬는시간'].includes(currentPeriod)) {
+                    display.innerText = `${days[currentDayIdx] || ''} ${currentPeriod}`;
+                } else {
+                    display.innerText = `${days[currentDayIdx]}요일 ${currentPeriod === '점심' ? '점심시간' : currentPeriod + '교시'}`;
+                }
+            }
+        }
+
+        function cycleDay() {
+            currentDayIdx = (currentDayIdx + 1) % days.length;
+            currentPeriod = 1;
+            addLog(`<span class="text-purple-400 font-bold">🔄 [시스템 강제 조작] 관리자가 날짜를 ${days[currentDayIdx]}요일로 직접 변경했습니다.</span>`);
+            updateTimeDisplay();
+            applyTimetable();
+        }
+
+        function cyclePeriod() {
+            const isLongDay = (days[currentDayIdx] === '화' || days[currentDayIdx] === '목');
+            const maxPeriod = isLongDay ? 7 : 6;
+            
+            if (typeof currentPeriod !== 'number' && currentPeriod !== '점심') {
+                currentPeriod = 1;
+            } else if (currentPeriod === 4) {
+                currentPeriod = '점심';
+            } else if (currentPeriod === '점심') {
+                currentPeriod = 5;
+            } else if (currentPeriod === maxPeriod) {
+                cycleDay();
+                return; 
+            } else {
+                currentPeriod++;
+            }
+            
+            const periodLabel = currentPeriod === '점심' ? '점심시간' : currentPeriod + '교시';
+            addLog(`<span class="text-purple-400 font-bold">🔄 [시스템 강제 조작] 관리자가 교시를 ${periodLabel}(으)로 직접 변경했습니다.</span>`);
+            updateTimeDisplay();
+            applyTimetable();
+        }
+
+        function getBaseSubject(floorLevel, roomId, dayIdx, periodStr) {
+            if (typeof periodStr !== 'number') return '자율';
+            let subjectsPool = [];
+            if (floorLevel === 4) subjectsPool = ['국어', '수학', '영어', '사회', '과학', '체육', '미술', '음악', '정보'];
+            else if (floorLevel === 3) subjectsPool = ['국어', '수학', '영어', '역사', '과학', '체육', '미술', '음악', '정보', '기가'];
+            else if (floorLevel === 2) subjectsPool = ['국어', '수학', '영어', '사회', '역사', '과학', '체육', '미술', '음악', '정보', '기가', '도덕'];
+            
+            const seed = dayIdx * 10 + periodStr + floorLevel;
+            let seededPool = [...subjectsPool];
+            for(let i = 0; i < seededPool.length; i++) {
+                const j = (seed + i) % seededPool.length;
+                [seededPool[i], seededPool[j]] = [seededPool[j], seededPool[i]];
+            }
+
+            const floor = schoolData.find(f => f.floor === floorLevel);
+            if (!floor) return '자율';
+            const regularRooms = floor.rooms.filter(r => r.id.match(/^\d-\d$/));
+            const roomIdx = regularRooms.findIndex(r => r.id === roomId);
+            
+            if (roomIdx === -1) return '자율';
+            return seededPool[roomIdx % seededPool.length];
+        }
+
+        function applyTimetable() {
+            // 특수 규칙: 급식실 전력 자동화 (3교시~5교시)
+            const isLunchTimeActive = [3, 4, '점심', 5].includes(currentPeriod);
+            const fl1 = schoolData.find(f => f.floor === 1);
+            if (fl1) {
+                const cafeteria = fl1.rooms.find(r => r.id === '급식실');
+                if (cafeteria) cafeteria.power = isLunchTimeActive;
+            }
+
+            if (['등교전', '방과후', '주말'].includes(currentPeriod)) {
+                schoolData.forEach(floor => floor.rooms.forEach(room => {
+                    if (room.id !== '급식실') {
+                        room.power = false; room.subject = currentPeriod + ' (소등)'; room.isMoving = false;
+                    }
+                }));
+                renderFloors(); return;
+            }
+            if (currentPeriod === '쉬는시간') {
+                schoolData.forEach(floor => floor.rooms.forEach(room => {
+                    if (adminRooms.includes(room.id)) { room.power = true; room.subject = '상시운영'; }
+                    else if (clubRooms.includes(room.id)) { room.power = false; room.subject = '사용 안함'; }
+                    else if (room.id.match(/^\d-\d$/)) { room.power = true; room.subject = '쉬는시간 대기'; room.isMoving = false; }
+                    else if (room.id !== '급식실') { room.power = false; room.subject = '대기중'; room.isMoving = false; }
+                }));
+                renderFloors(); return;
+            }
+            if (currentPeriod === '점심') {
+                schoolData.forEach(floor => floor.rooms.forEach(room => {
+                    if (room.id === '급식실') { room.power = true; room.subject = '점심 식사 운영중'; }
+                    else { room.power = false; room.subject = '점심시간 (소등)'; room.isMoving = false; }
+                }));
+                addLog("Warning: 점심시간 감지. 급식실 제외 교내 전력 일괄 차단.");
+                renderFloors(); return;
+            }
+
+            schoolData.forEach(floor => {
+                floor.rooms.forEach(room => {
+                    if (adminRooms.includes(room.id)) { room.power = true; room.subject = '상시운영'; }
+                    else if (clubRooms.includes(room.id)) { room.power = false; room.subject = '사용 안함'; }
+                    else if (!room.id.match(/^\d-\d$/) && room.id !== '급식실') { room.subject = '대기중'; room.power = false; room.isMoving = false; }
+                });
+            });
+
+            const getAvailableSpecialRoom = (subject, floorLevel, classNum) => {
+                const candidates = specialRoomMap[subject];
+                if (!candidates) return null;
+                let available = [];
+                schoolData.forEach(f => f.rooms.forEach(r => {
+                    if (candidates.includes(r.id) && (r.subject === '대기중' || r.subject === '사용 안함')) available.push(r);
+                }));
+                if (available.length === 0) return null;
+                if (subject === '음악' && available.some(r => r.id === '음악실') && available.some(r => r.id === '피아노실')) {
+                    return Math.random() < 0.8 ? available.find(r => r.id === '음악실') : available.find(r => r.id === '피아노실');
+                }
+                if (subject === '기가' && available.length >= 2) return available[Math.random() < 0.5 ? 0 : 1];
+                return available[0];
+            };
+
+            schoolData.forEach(floor => {
+                let subjectsPool = [];
+                if (floor.floor === 4) subjectsPool = ['국어', '수학', '영어', '사회', '과학', '체육', '미술', '음악', '정보'];
+                else if (floor.floor === 3) subjectsPool = ['국어', '수학', '영어', '역사', '과학', '체육', '미술', '음악', '정보', '기가'];
+                else if (floor.floor === 2) subjectsPool = ['국어', '수학', '영어', '사회', '역사', '과학', '체육', '미술', '음악', '정보', '기가', '도덕'];
+
+                const seed = currentDayIdx * 10 + currentPeriod + floor.floor;
+                let seededPool = [...subjectsPool];
+                for(let i = 0; i < seededPool.length; i++) {
+                    const j = (seed + i) % seededPool.length;
+                    [seededPool[i], seededPool[j]] = [seededPool[j], seededPool[i]];
+                }
+
+                const regularRooms = floor.rooms.filter(r => r.id.match(/^\d-\d$/));
+                let poolIndex = 0;
+
+                regularRooms.forEach(room => {
+                    const overrideKey = `${currentDayIdx}-${room.id}-${currentPeriod}`;
+                    if (manualOverrides[overrideKey]) {
+                        const overSubj = manualOverrides[overrideKey];
+                        if (overSubj.includes('(이동)')) { room.subject = overSubj; room.power = false; room.isMoving = true; }
+                        else { room.subject = overSubj; room.power = true; room.isMoving = false; }
+                        poolIndex++; return;
+                    }
+
+                    let assignedSubject = seededPool[poolIndex % seededPool.length];
+                    if (specialRoomMap[assignedSubject]) {
+                        const sRoom = getAvailableSpecialRoom(assignedSubject, floor.floor, room.id.split('-')[1]);
+                        if (sRoom) {
+                            const gradeStr = floor.floor === 4 ? 1 : floor.floor === 3 ? 2 : 3;
+                            sRoom.subject = `${gradeStr}학년 ${room.id.split('-')[1]}반 사용중`; sRoom.power = true;
+                            room.subject = assignedSubject; room.power = false; room.isMoving = true;
+                        } else {
+                            room.subject = assignedSubject + '(이론)'; room.power = true; room.isMoving = false;
+                        }
+                    } else if (assignedSubject === '체육') {
+                        room.subject = '체육(야외)'; room.power = false; room.isMoving = true;
+                    } else {
+                        room.subject = assignedSubject; room.power = true; room.isMoving = false;
+                    }
+                    poolIndex++;
+                });
+            });
+            renderFloors();
+        }
+
+        // --- 시간표 오버라이드 ---
+        let selectedOvrRoom = null;
+        let selectedOvrPeriod = null;
+        let selectedOvrFloor = null;
+
+        function openOverrideModal() {
+            document.getElementById('ovr-floor-select').value = "";
+            document.getElementById('ovr-class-select').innerHTML = '<option value="">층을 먼저 선택하세요</option>';
+            document.getElementById('ovr-periods-container').innerHTML = '';
+            document.getElementById('ovr-modal').style.display = 'flex';
+        }
+        function renderOverrideClasses() {
+            const floorSelect = document.getElementById('ovr-floor-select');
+            const classSelect = document.getElementById('ovr-class-select');
+            const container = document.getElementById('ovr-periods-container');
+            container.innerHTML = ''; 
+            classSelect.innerHTML = '<option value="">반을 선택하세요</option>'; 
+            if (!floorSelect.value) { classSelect.innerHTML = '<option value="">층을 먼저 선택하세요</option>'; return; }
+            
+            const floorLvl = parseInt(floorSelect.value);
+            const floorData = schoolData.find(f => f.floor === floorLvl);
+            if (floorData) {
+                floorData.rooms.filter(r => r.id.match(/^\d-\d$/)).forEach(r => {
+                    const opt = document.createElement('option');
+                    opt.value = `${floorLvl}|${r.id}`; opt.text = `${floorLvl}F ${r.id}`; opt.className = "bg-black text-green-400 font-normal";
+                    classSelect.appendChild(opt);
+                });
+            }
+        }
+        function closeOverrideModal() { document.getElementById('ovr-modal').style.display = 'none'; }
+        
+        function renderOverridePeriods() {
+            const selectEl = document.getElementById('ovr-class-select');
+            const container = document.getElementById('ovr-periods-container');
+            if(!selectEl.value) { container.innerHTML = ''; return; }
+            
+            const parts = selectEl.value.split('|');
+            const floorLevel = parseInt(parts[0]); const roomId = parts[1];
+            selectedOvrFloor = floorLevel; selectedOvrRoom = roomId;
+
+            container.innerHTML = `<div class="text-center font-bold text-yellow-500 mb-2 border-b border-yellow-800 pb-1">--- [ ${floorLevel}F ${roomId} TIMETABLE SYNC ] ---</div>`;
+            const isLongDay = (days[currentDayIdx] === '화' || days[currentDayIdx] === '목'); 
+            const maxPeriod = isLongDay ? 7 : 6;
+            
+            for(let p = 1; p <= maxPeriod; p++) {
+                const overrideKey = `${currentDayIdx}-${roomId}-${p}`;
+                const hasOverride = !!manualOverrides[overrideKey];
+                let currSubj = ''; let btnClass = '';
+                
+                if (hasOverride) {
+                    currSubj = manualOverrides[overrideKey] + ' (OVR)';
+                    btnClass = 'bg-yellow-900 text-yellow-300 border border-yellow-600 hover:bg-yellow-800';
+                } else {
+                    let baseSubj = getBaseSubject(floorLevel, roomId, currentDayIdx, p);
+                    if(specialRoomMap[baseSubj] || baseSubj === '체육') baseSubj += '(이동)';
+                    currSubj = baseSubj; btnClass = 'bg-green-900 text-green-300 border border-green-700 hover:bg-green-800';
+                }
+                container.innerHTML += `
+                    <div class="flex justify-between items-center bg-[#0a1a0a] p-2 border border-green-900">
+                        <span class="font-bold text-green-500">[${p}교시]</span>
+                        <button onclick="openSubjectSelector(${p})" class="px-3 py-1 text-xs font-bold w-24 truncate transition ${btnClass}">${currSubj}</button>
+                    </div>
+                `;
+            }
+        }
+
+        function openSubjectSelector(period) {
+            selectedOvrPeriod = period;
+            document.getElementById('subj-modal').style.display = 'flex';
+            const subjContainer = document.getElementById('subj-list-container');
+            subjContainer.innerHTML = '';
+            const subjects = ['국어', '수학', '과학', '영어', '사회', '역사', '도덕', '체육(이동)', '미술(이동)', '기가(이동)', '정보(이동)', '음악(이동)', '자율', '초기화(기본값)'];
+            
+            subjects.forEach(subj => {
+                const btn = document.createElement('button');
+                btn.innerText = subj;
+                btn.className = "w-full text-left p-2 mb-1 border border-green-800 text-green-400 hover:bg-green-700 hover:text-white transition text-sm bg-black";
+                if(subj === '초기화(기본값)') btn.className = "w-full text-left p-2 mt-2 border border-gray-600 text-gray-400 hover:bg-gray-700 hover:text-white transition text-sm bg-[#111]";
+                btn.onclick = () => confirmSubjectSelection(subj);
+                subjContainer.appendChild(btn);
+            });
+        }
+        function closeSubjModal() { document.getElementById('subj-modal').style.display = 'none'; }
+        function confirmSubjectSelection(newSubject) {
+            const overrideKey = `${currentDayIdx}-${selectedOvrRoom}-${selectedOvrPeriod}`;
+            if (newSubject === '초기화(기본값)') {
+                delete manualOverrides[overrideKey]; addLog(`🔄 [시간표 변경] ${selectedOvrRoom} ${selectedOvrPeriod}교시 시간표 덮어쓰기가 초기화되었습니다.`);
+            } else {
+                manualOverrides[overrideKey] = newSubject; addLog(`<span class="text-yellow-400 font-bold">🔄 [시간표 변경] ${selectedOvrRoom} ${selectedOvrPeriod}교시가 '${newSubject}'(으)로 강제 변경되었습니다.</span>`);
+            }
+            closeSubjModal(); renderOverridePeriods(); applyTimetable(); 
+        }
+
+        // --- Gemini API (EVO 연동) ---
+        async function askEVO() {
+            const inputEl = document.getElementById('evo-input');
+            const query = inputEl.value.trim();
+            if (!query) return;
+            addLog(`User: ${query}`); inputEl.value = '';
+
+            const currentDayStr = days[currentDayIdx];
+            const currentPeriodStr = currentPeriod === '점심' ? '점심시간' : currentPeriod + '교시';
+            const activeCount = document.getElementById('stat-active')?.innerText || 0;
+            const totalCount = document.getElementById('stat-total')?.innerText || 0;
+            const usagePct = document.getElementById('stat-usage')?.innerText || '0%';
+
+            const systemPrompt = `너는 중학교 전력 및 시설 관리를 제어하는 최고 권한의 AI 에이전트 'Agent_AI_EVO'야.
+현재 학교 전력 시스템 상태 정보:
+- 시간: ${currentDayStr}요일 ${currentPeriodStr}
+- 전력 활성화 시설 수: ${activeCount} / ${totalCount}
+- 전체 전력 사용률: ${usagePct}
+대답 규칙:
+1. 보안 터미널 환경 컨셉에 맞춰 분석적이고 전문적인 말투로 답변하되, 관리자인 사용자의 요청에는 항상 긍정적이고 협조적으로 응답해.
+2. 마크다운 없이 순수 텍스트로 짧게 대답해.
+3. 사용자가 특정 장소의 전력을 켜거나 끄라고 명령하면, 응답 메시지 마지막에 반드시 '[CMD:층수:방이름:ON/OFF]' 형태의 제어 코드를 포함해. 
+   예시: '알겠습니다. 4층 1-1 전력을 차단합니다. [CMD:4:1-1:OFF]'
+   방 이름은 '1-1', '과학실 1', '행정실' 처럼 정확히 적고, 층수를 모르면 'ALL'로 적어 (예: [CMD:ALL:교무실:OFF]).
+   만약 "1층 전체", "모든 불" 처럼 특정 층 전체나 학교 전체를 제어하라고 하면 방 이름에 'ALL'을 넣어. (예: 1층 전체 끄기 -> [CMD:1:ALL:OFF], 학교 전체 켜기 -> [CMD:ALL:ALL:ON])`;
+
+            const payload = {
+                contents: [{ parts: [{ text: query }] }],
+                systemInstruction: { parts: [{ text: systemPrompt }] }
+            };
+
+            try {
+                addLog("Agent_AI_EVO: 통신 연결 중... 데이터를 분석합니다.");
+                
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=AIzaSyCUDr5-0YabPVVh4pi7te5Yf04K3cbPSHA`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+                });
+                
+                const result = await response.json();
+                let reply = result.candidates?.[0]?.content?.parts?.[0]?.text || "Error: 응답 데이터 파싱 실패.";
+                
+                const cmdRegex = /\[CMD:(.*?):(.*?):(ON|OFF)\]/g;
+                let match; let anyChanged = false;
+
+                while ((match = cmdRegex.exec(reply)) !== null) {
+                    const floorTarget = match[1].trim().toUpperCase(); const roomTarget = match[2].trim().toUpperCase(); const actionTarget = match[3].trim(); 
+                    const isPowerOn = actionTarget === 'ON';
+                    schoolData.forEach(f => {
+                        if (floorTarget === 'ALL' || f.floor.toString() === floorTarget) {
+                            f.rooms.forEach(r => {
+                                const cleanRoomId = r.id.replace(/\s+/g, '').toUpperCase(); const cleanTarget = roomTarget.replace(/\s+/g, '').replace('반', '');
+                                if (cleanTarget === 'ALL' || cleanTarget === '전체' || cleanRoomId === cleanTarget || cleanRoomId.includes(cleanTarget) || cleanTarget.includes(cleanRoomId)) {
+                                    if (r.power !== isPowerOn) { r.power = isPowerOn; anyChanged = true; }
+                                }
+                            });
+                        }
+                    });
+                    if (anyChanged) {
+                        const actionStr = isPowerOn ? '⚡ 강제 공급(ON)' : '⏾ 강제 차단(OFF)';
+                        const targetArea = roomTarget === 'ALL' || roomTarget === '전체' ? (floorTarget === 'ALL' ? '교내 전체' : `${floorTarget}층 전체`) : `${floorTarget === 'ALL' ? '' : floorTarget + '층 '}${roomTarget}`;
+                        setTimeout(() => { addLog(`<span class="text-yellow-400 font-bold">⚠️ [EVO 원격 제어] ${targetArea} 전력을 ${actionStr} 했습니다.</span>`); renderFloors(); }, 200);
+                    }
+                }
+                reply = reply.replace(/\[CMD:.*?:.*?:(?:ON|OFF)\]/g, '').trim();
+                reply.split('\n').forEach(line => { if(line.trim()) addLog(`Agent_AI_EVO: ${line}`); });
+                
+            } catch (e) { addLog(`Agent_AI_EVO: 시스템 통신 에러. (${e.message})`); }
+        }
+
+        // =========================================================================
+        // [3D 시각화 (Three.js)] 
+        // =========================================================================
+
+        let scene, camera, renderer, raycaster, pointer;
+        const roomMeshes = []; 
+        const floorGroups = {};
+        const floorPlates = {};
+        const floorTagElements = {};
+        const roomLabelElements = [];
+        
+        let current3DState = 'SCHOOL'; // 'SCHOOL', 'FLOOR'
+        let target3DFloor = null;
+
+        let targetCamPos = new THREE.Vector3(0, 18, 28);
+        let targetCamLook = new THREE.Vector3(0, 4, 0);
+        let currentCamLook = new THREE.Vector3(0, 4, 0);
+        
+        let isDragging = false;
+        let dragDistance = 0;
+        let previousMousePosition = { x: 0, y: 0 };
+        let camRadius = 32;
+        let camAzimuth = 0;
+        let camElevation = Math.PI / 3.2;
+
+        function updateCameraTargetFromSpherical() {
+            camElevation = Math.max(0.1, Math.min(Math.PI / 2 - 0.05, camElevation));
+            camRadius = Math.max(8, Math.min(70, camRadius));
+            
+            targetCamPos.x = targetCamLook.x + camRadius * Math.cos(camElevation) * Math.sin(camAzimuth);
+            targetCamPos.y = targetCamLook.y + camRadius * Math.sin(camElevation);
+            targetCamPos.z = targetCamLook.z + camRadius * Math.cos(camElevation) * Math.cos(camAzimuth);
+        }
+
+        function init3D() {
+            const container = document.getElementById('three-container');
+            
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x051005);
+            
+            camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+            camera.position.copy(targetCamPos);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            container.appendChild(renderer.domElement);
+
+            raycaster = new THREE.Raycaster();
+            pointer = new THREE.Vector2(-1, -1);
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.7);
+            directionalLight.position.set(15, 30, 20);
+            scene.add(directionalLight);
+
+            const gridHelper = new THREE.GridHelper(50, 50, 0x166534, 0x0a2a0a);
+            gridHelper.position.y = -0.6;
+            scene.add(gridHelper);
+
+            buildSchoolGeometry();
+
+            window.addEventListener('resize', onWindowResize, false);
+            
+            const dom = renderer.domElement;
+            dom.addEventListener('mousedown', (e) => {
+                isDragging = true;
+                dragDistance = 0;
+                previousMousePosition = { x: e.clientX, y: e.clientY };
+            });
+            dom.addEventListener('mouseup', () => { isDragging = false; });
+            dom.addEventListener('mouseleave', () => { isDragging = false; });
+            dom.addEventListener('mousemove', onPointerMove);
+            dom.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                camRadius += e.deltaY * 0.025;
+                updateCameraTargetFromSpherical();
+            }, { passive: false });
+            
+            dom.addEventListener('click', onClick3D);
+
+            updateCameraTargetFromSpherical();
+            animate3D();
+        }
+
+        function buildSchoolGeometry() {
+            const floorSpacing = 3.2;
+            const tagsContainer = document.getElementById('floor-tags-container');
+            const labelsContainer = document.getElementById('room-labels-container');
+            tagsContainer.innerHTML = '';
+            labelsContainer.innerHTML = '';
+            roomLabelElements.length = 0;
+
+            schoolData.forEach((floorData) => {
+                const floorLvl = floorData.floor;
+                const fGroup = new THREE.Group();
+                fGroup.position.y = (floorLvl - 1) * floorSpacing; 
+                floorGroups[floorLvl] = fGroup;
+                scene.add(fGroup);
+
+                // 반투명 바닥판 (Plate)
+                const plateGeo = new THREE.BoxGeometry(20, 0.15, 18);
+                const plateMat = new THREE.MeshStandardMaterial({ 
+                    color: 0x052e16, 
+                    transparent: true, 
+                    opacity: 0.35, 
+                    roughness: 0.2 
+                });
+                const plateMesh = new THREE.Mesh(plateGeo, plateMat);
+                plateMesh.position.set(0, -0.6, 0);
+                
+                const plateEdges = new THREE.EdgesGeometry(plateGeo);
+                const plateLineMat = new THREE.LineBasicMaterial({ color: 0x22c55e, transparent: true, opacity: 0.5 });
+                plateMesh.add(new THREE.LineSegments(plateEdges, plateLineMat));
+                
+                plateMesh.userData = { isPlate: true, floor: floorLvl };
+                fGroup.add(plateMesh);
+                floorPlates[floorLvl] = plateMesh;
+
+                // 층수 버튼 (HTML 오버레이)
+                const btnTag = document.createElement('button');
+                btnTag.className = 'floor-tag-btn';
+                btnTag.innerText = `${floorLvl}F >`;
+                btnTag.onclick = (e) => {
+                    e.stopPropagation();
+                    enterFloorView(floorLvl);
+                };
+                tagsContainer.appendChild(btnTag);
+                floorTagElements[floorLvl] = { element: btnTag, yPos: (floorLvl - 1) * floorSpacing };
+
+                // 배치도 기준 교실 생성
+                floorData.rooms.forEach((room) => {
+                    const geometry = new THREE.BoxGeometry(room.w, 1.2, room.d);
+                    const material = new THREE.MeshStandardMaterial({ 
+                        color: 0x111111, 
+                        emissive: room.power ? 0x22c55e : 0x000000,
+                        emissiveIntensity: 0.85,
+                        transparent: true,
+                        opacity: 0.85
+                    });
+
+                    const mesh = new THREE.Mesh(geometry, material);
+                    const edges = new THREE.EdgesGeometry(geometry);
+                    const lineMaterial = new THREE.LineBasicMaterial({ color: 0x166534 });
+                    mesh.add(new THREE.LineSegments(edges, lineMaterial));
+
+                    mesh.position.set(room.x, 0, room.z);
+                    mesh.userData = { 
+                        floor: floorLvl, 
+                        id: room.id,
+                        baseColor: 0x111111,
+                        x: room.x, z: room.z
+                    };
+                    
+                    fGroup.add(mesh);
+                    roomMeshes.push(mesh);
+
+                    // 층별 교실 네온 라벨 태그 생성
+                    const labelDiv = document.createElement('div');
+                    labelDiv.className = 'room-3d-label hidden';
+                    labelDiv.innerText = room.id;
+                    labelsContainer.appendChild(labelDiv);
+                    roomLabelElements.push({
+                        element: labelDiv,
+                        mesh: mesh,
+                        floor: floorLvl
+                    });
+                });
+            });
+        }
+
+        function sync3DMaterials() {
+            roomMeshes.forEach(mesh => {
+                const fLvl = mesh.userData.floor;
+                const rId = mesh.userData.id;
+                
+                const floorObj = schoolData.find(f => f.floor === fLvl);
+                if (floorObj) {
+                    const roomObj = floorObj.rooms.find(r => r.id === rId);
+                    if (roomObj) {
+                        if (roomObj.power) {
+                            mesh.material.emissive.setHex(0x22c55e);
+                            mesh.material.opacity = 0.95;
+                        } else {
+                            mesh.material.emissive.setHex(0x000000);
+                            mesh.material.opacity = 0.45;
+                        }
+                        mesh.userData.power = roomObj.power;
+                    }
+                }
+            });
+        }
+
+        function onWindowResize() {
+            const container = document.getElementById('three-container');
+            if(container && camera && renderer) {
+                camera.aspect = container.clientWidth / container.clientHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(container.clientWidth, container.clientHeight);
+            }
+        }
+
+        function onPointerMove(event) {
+            const container = document.getElementById('three-container');
+            const rect = container.getBoundingClientRect();
+            pointer.x = ((event.clientX - rect.left) / container.clientWidth) * 2 - 1;
+            pointer.y = -((event.clientY - rect.top) / container.clientHeight) * 2 + 1;
+
+            if (isDragging) {
+                const deltaMove = {
+                    x: event.clientX - previousMousePosition.x,
+                    y: event.clientY - previousMousePosition.y
+                };
+                dragDistance += Math.abs(deltaMove.x) + Math.abs(deltaMove.y);
+                
+                camAzimuth -= deltaMove.x * 0.005;
+                camElevation += deltaMove.y * 0.005;
+                updateCameraTargetFromSpherical();
+                
+                previousMousePosition = { x: event.clientX, y: event.clientY };
+            }
+        }
+
+        function getValidIntersects(intersects) {
+            return intersects.filter(hit => {
+                if (current3DState === 'SCHOOL') return false; // 전체 보기에선 교실 직접 클릭 차단
+                if (current3DState === 'FLOOR') return hit.object.userData.floor === target3DFloor && !hit.object.userData.isPlate;
+                return false;
+            });
+        }
+
+        function onClick3D(event) {
+            if (dragDistance > 5) return;
+
+            if (current3DState === 'FLOOR') {
+                raycaster.setFromCamera(pointer, camera);
+                const validIntersects = getValidIntersects(raycaster.intersectObjects(roomMeshes));
+
+                if (validIntersects.length > 0) {
+                    const mesh = validIntersects[0].object;
+                    toggleRoom(mesh.userData.floor, mesh.userData.id, true);
+                }
+            }
+        }
+
+        function enterFloorView(floor) {
+            current3DState = 'FLOOR';
+            target3DFloor = floor;
+            document.getElementById('3d-status').innerText = `> ${floor}F (Sector) View - 교실을 클릭하여 전력 ON/OFF`;
+            document.getElementById('btn-3d-back').classList.remove('hidden');
+
+            // 다른 층 100% 완전 투명화
+            Object.keys(floorGroups).forEach(k => {
+                const fGroup = floorGroups[k];
+                if (parseInt(k) === floor) {
+                    fGroup.visible = true;
+                    fGroup.children.forEach(m => {
+                        if(m.userData.isPlate) m.material.opacity = 0.45;
+                        else m.material.opacity = m.userData.power ? 0.95 : 0.45;
+                    });
+                } else {
+                    fGroup.visible = false;
+                }
+            });
+
+            // 선택 층 중앙 시점 이동
+            const yPos = (floor - 1) * 3.2;
+            targetCamLook.set(0, yPos, 0);
+            camRadius = 22;
+            camElevation = Math.PI / 3.5;
+            updateCameraTargetFromSpherical();
+        }
+
+        function goBack3D() {
+            current3DState = 'SCHOOL';
+            target3DFloor = null;
+            document.getElementById('3d-status').innerText = `> 학교 전체 보기`;
+            document.getElementById('btn-3d-back').classList.add('hidden');
+
+            Object.keys(floorGroups).forEach(k => {
+                const fGroup = floorGroups[k];
+                fGroup.visible = true;
+                fGroup.children.forEach(m => {
+                    if(m.userData.isPlate) m.material.opacity = 0.35;
+                    else m.material.opacity = m.userData.power ? 0.85 : 0.45;
+                });
+            });
+
+            targetCamLook.set(0, 4, 0);
+            camRadius = 32;
+            camElevation = Math.PI / 3.2;
+            updateCameraTargetFromSpherical();
+        }
+
+        function updateOverlayUI() {
+            const container = document.getElementById('three-container');
+            if (!container || !camera) return;
+
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+            const tempV = new THREE.Vector3();
+
+            // 1. 층수 버튼 위치 업데이트 (화면 회전 시 유기적 이동)
+            Object.keys(floorTagElements).forEach(fl => {
+                const tagData = floorTagElements[fl];
+                if (current3DState === 'SCHOOL') {
+                    tagData.element.style.display = 'block';
+                    tempV.set(11.5, tagData.yPos, 0);
+                    tempV.project(camera);
+
+                    const x = (tempV.x *  .5 + .5) * width;
+                    const y = (tempV.y * -.5 + .5) * height;
+
+                    tagData.element.style.left = `${x}px`;
+                    tagData.element.style.top = `${y}px`;
+                } else {
+                    tagData.element.style.display = 'none';
+                }
+            });
+
+            // 2. 층별 교실 네온 라벨 위치 업데이트
+            roomLabelElements.forEach(item => {
+                if (current3DState === 'FLOOR' && item.floor === target3DFloor) {
+                    item.element.classList.remove('hidden');
+                    item.mesh.getWorldPosition(tempV);
+                    tempV.y += 0.8; 
+                    tempV.project(camera);
+
+                    const x = (tempV.x *  .5 + .5) * width;
+                    const y = (tempV.y * -.5 + .5) * height;
+
+                    item.element.style.left = `${x}px`;
+                    item.element.style.top = `${y}px`;
+                } else {
+                    item.element.classList.add('hidden');
+                }
+            });
+        }
+
+        function animate3D() {
+            requestAnimationFrame(animate3D);
+            
+            camera.position.lerp(targetCamPos, 0.08);
+            currentCamLook.lerp(targetCamLook, 0.08);
+            camera.lookAt(currentCamLook);
+
+            updateOverlayUI();
+
+            // 층별 보기 호버 툴팁
+            if (current3DState === 'FLOOR') {
+                raycaster.setFromCamera(pointer, camera);
+                const validIntersects = getValidIntersects(raycaster.intersectObjects(roomMeshes));
+                const tooltip = document.getElementById('3d-tooltip');
+                
+                if (validIntersects.length > 0) {
+                    const mesh = validIntersects[0].object;
+                    const powerTxt = mesh.userData.power ? 'ON' : 'OFF';
+                    tooltip.innerHTML = `${mesh.userData.floor}F ${mesh.userData.id} [${powerTxt}] (클릭하여 토글)`;
+                    
+                    tooltip.style.left = (pointer.x * 0.5 + 0.5) * renderer.domElement.clientWidth + 15 + 'px';
+                    tooltip.style.top = (-(pointer.y * 0.5 - 0.5)) * renderer.domElement.clientHeight + 15 + 'px';
+                    tooltip.classList.remove('hidden');
+                    document.body.style.cursor = 'pointer';
+                } else {
+                    tooltip.classList.add('hidden');
+                    document.body.style.cursor = 'default';
+                }
+            } else {
+                document.getElementById('3d-tooltip').classList.add('hidden');
+                document.body.style.cursor = 'default';
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // --- Chart.js 그래프 설정 ---
+        let powerChart;
+        const maxChartDataPoints = 30;
+
+        function initGraph() {
+            const ctx = document.getElementById('usageChart').getContext('2d');
+            Chart.defaults.color = '#4ade80';
+            Chart.defaults.font.family = "'Courier New', Courier, monospace";
+
+            powerChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: Array(maxChartDataPoints).fill(''), 
+                    datasets: [{
+                        label: 'Energy Usage (%)',
+                        data: Array(maxChartDataPoints).fill(0),
+                        borderColor: '#22c55e',
+                        backgroundColor: 'rgba(34, 197, 94, 0.2)',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        pointHoverRadius: 4,
+                        fill: true,
+                        tension: 0.3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: { duration: 400 },
+                    scales: {
+                        y: {
+                            min: 0, max: 100,
+                            grid: { color: '#0a2a0a' },
+                            ticks: { callback: function(value) { return value + '%'; } }
+                        },
+                        x: { grid: { color: '#0a2a0a' } }
+                    },
+                    plugins: { legend: { display: false } }
+                }
+            });
+
+            setInterval(pushChartData, 1500);
+        }
+
+        function pushChartData() {
+            if (!powerChart) return;
+            const usageEl = document.getElementById('stat-usage');
+            let currentUsage = 0;
+            if (usageEl) {
+                currentUsage = parseInt(usageEl.innerText.replace('%', '')) || 0;
+            }
+
+            const nowStr = new Date().toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+            const dataArr = powerChart.data.datasets[0].data;
+            const labelsArr = powerChart.data.labels;
+
+            dataArr.push(currentUsage);
+            labelsArr.push(nowStr);
+
+            if (dataArr.length > maxChartDataPoints) {
+                dataArr.shift();
+                labelsArr.shift();
+            }
+
+            powerChart.update('none');
+        }
+
+        // --- 초기화 ---
+        window.addEventListener('DOMContentLoaded', () => {
+            const logBox = document.getElementById('log-box');
+            if(logBox) logBox.innerHTML = ''; 
+            addLog("System initialized. 수현중학교 전력망 모니터링 시작.");
+            addLog("실시간 시스템 가동: 컴시간 알리미 자동 스케줄링 활성화.");
+            
+            setInterval(checkRealTime, 100);
+            checkRealTime(); 
+            
+            init3D();
+            initGraph();
+
+            renderFloors();
+        });
+    </script>
+</body>
+</html>
